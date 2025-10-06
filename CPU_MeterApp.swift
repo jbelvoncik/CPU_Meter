@@ -66,15 +66,21 @@ struct CPU_MeterApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow?
-
     func applicationDidFinishLaunching(_ note: Notification) {
         let host = NSHostingView(rootView: OverlayView())
         window = OverlayWindow(view: host)
         window?.orderFrontRegardless()
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: \"Quit CPU Meter\", action: #selector(NSApplication.terminate(_:)), keyEquivalent: \"q\")
+        appMenuItem.submenu = appMenu
+        NSApp.mainMenu = mainMenu
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        window?.close() // triggers position save
-    }
+    func applicationWillTerminate(_ notification: Notification) { window?.close() }
 }
