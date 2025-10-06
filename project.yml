@@ -8,7 +8,7 @@ targets:
     type: application
     platform: macOS
     sources:
-      - .
+      - .   # include all Swift files in current folder
     settings:
       base:
         PRODUCT_NAME: CPU_Meter
