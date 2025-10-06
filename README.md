@@ -39,3 +39,12 @@ Repository purpose: **educational & experimental**.
 4. Implement preferences (theme, opacity, refresh)  
 5. Package `.app` → notarized / Homebrew release
 
+
+### GPU / ANE Metrics (current method)
+Due to macOS 14+ (Tahoe) changes, `powermetrics` no longer exposes SMC sampler data.
+Current GPU and ANE usage values are approximated by scanning `ioreg` output for:
+- **H11ANE** → Neural Engine activity
+- **AppleARMPMUPowerSensor** → GPU power sensors  
+
+The values are normalized heuristically to provide relative load indicators.
+Future updates may use `IOReportCopyChannelsInGroup` for true power sampling (no root access required).
