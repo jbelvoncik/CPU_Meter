@@ -14,11 +14,22 @@ import SwiftUI
 import AppKit
 import Darwin
 
+// MARK: - CPUUsageSampler
+/// Periodically queries the macOS Mach kernel for per-CPU usage ticks.
+/// Converts tick deltas into a single averaged utilization value (0–1 range).
 final class CPUUsageSampler: ObservableObject {
+
+    /// Overall CPU utilization averaged across all logical cores.
     @Published var overall: Double = 0
-    private var prev: [[UInt32]] = []
+
+    /// Cached previous tick counts (user, system, nice, idle) for delta computation.
+    private var previous: [[UInt32]] = []
+
+    /// Periodic timer driving the sampling loop.
     private var timer: Timer?
 
+    /// Initializes the sampler and starts a repeating timer.
+    /// - Parameter interval: Sampling interval in seconds (default 1 s).
     init(interval: TimeInterval = 1.0) {
         sampleOnce()
         timer = .scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
@@ -26,44 +37,71 @@ final class CPUUsageSampler: ObservableObject {
         }
         RunLoop.main.add(timer!, forMode: .common)
     }
+
     deinit { timer?.invalidate() }
 
+    /// Reads kernel CPU tick counters and computes utilization.
     private func sampleOnce() {
-        var n: natural_t = 0
-        var arr: processor_info_array_t?
-        var cnt: mach_msg_type_number_t = 0
-        guard host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &n, &arr, &cnt) == KERN_SUCCESS,
-              let base = arr else { return }
+        var cpuCount: natural_t = 0
+        var infoArray: processor_info_array_t?
+        var infoCount: mach_msg_type_number_t = 0
+
+        guard host_processor_info(mach_host_self(),
+                                  PROCESSOR_CPU_LOAD_INFO,
+                                  &cpuCount,
+                                  &infoArray,
+                                  &infoCount) == KERN_SUCCESS,
+              let base = infoArray else { return }
+
         let stride = Int(CPU_STATE_MAX)
-        let buf = UnsafeBufferPointer(start: base, count: Int(cnt))
-        if prev.count != Int(n) { prev = Array(repeating: [0,0,0,0], count: Int(n)) }
+        let buffer = UnsafeBufferPointer(start: base, count: Int(infoCount))
+        if previous.count != Int(cpuCount) {
+            previous = Array(repeating: [0, 0, 0, 0], count: Int(cpuCount))
+        }
 
         var sumBusy = 0.0, sumTotal = 0.0
-        for i in 0..<Int(n) {
+        for i in 0..<Int(cpuCount) {
             let o = i * stride
-            let u = UInt32(buf[o+Int(CPU_STATE_USER)])
-            let s = UInt32(buf[o+Int(CPU_STATE_SYSTEM)])
-            let nn = UInt32(buf[o+Int(CPU_STATE_NICE)])
-            let id = UInt32(buf[o+Int(CPU_STATE_IDLE)])
-            let du = Double(u &- prev[i][0])
-            let ds = Double(s &- prev[i][1])
-            let dn = Double(nn &- prev[i][2])
-            let di = Double(id &- prev[i][3])
+            let u = UInt32(buffer[o + Int(CPU_STATE_USER)])
+            let s = UInt32(buffer[o + Int(CPU_STATE_SYSTEM)])
+            let n = UInt32(buffer[o + Int(CPU_STATE_NICE)])
+            let id = UInt32(buffer[o + Int(CPU_STATE_IDLE)])
+
+            // Tick deltas since previous sample.
+            let du = Double(u &- previous[i][0])
+            let ds = Double(s &- previous[i][1])
+            let dn = Double(n &- previous[i][2])
+            let di = Double(id &- previous[i][3])
+
             let busy = du + ds + dn
             let total = busy + di
-            sumBusy += busy; sumTotal += total
-            prev[i] = [u,s,nn,id]
+            sumBusy += busy
+            sumTotal += total
+
+            previous[i] = [u, s, n, id]
         }
-        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: base),
-                      vm_size_t(cnt)*vm_size_t(MemoryLayout<integer_t>.stride))
-        DispatchQueue.main.async { self.overall = sumTotal > 0 ? sumBusy/sumTotal : 0 }
+
+        // Release Mach-allocated memory.
+        vm_deallocate(mach_task_self_,
+                      vm_address_t(bitPattern: base),
+                      vm_size_t(infoCount) * vm_size_t(MemoryLayout<integer_t>.stride))
+
+        // Publish averaged utilization to the SwiftUI view.
+        DispatchQueue.main.async {
+            self.overall = sumTotal > 0 ? sumBusy / sumTotal : 0
+        }
     }
 }
 
+// MARK: - OverlayWindow
+/// Transparent always-on-top frameless window used for the floating overlay.
+/// Does not become key window to avoid stealing focus from user applications.
 final class OverlayWindow: NSWindow {
     init(view: NSView) {
         super.init(contentRect: NSRect(x: 100, y: 100, width: 180, height: 80),
-                   styleMask: [.borderless], backing: .buffered, defer: false)
+                   styleMask: [.borderless],
+                   backing: .buffered,
+                   defer: false)
         isOpaque = false
         backgroundColor = .clear
         level = .floating
@@ -71,13 +109,18 @@ final class OverlayWindow: NSWindow {
         collectionBehavior = [.canJoinAllSpaces]
         contentView = view
     }
+
+    /// Prevents focus stealing (expected overlay behaviour).
     override var canBecomeKey: Bool { false }
 }
 
+// MARK: - OverlayView
+/// SwiftUI front-end showing the current CPU load as a text label.
+/// Future versions will add GPU and ANE metrics.
 struct OverlayView: View {
     @StateObject var cpu = CPUUsageSampler()
     var body: some View {
-        Text(String(format: "CPU %.0f%%", cpu.overall*100))
+        Text(String(format: "CPU %.0f%%", cpu.overall * 100))
             .font(.system(size: 20, weight: .bold, design: .rounded))
             .foregroundColor(.white)
             .padding(20)
@@ -86,18 +129,23 @@ struct OverlayView: View {
     }
 }
 
+// MARK: - App entry
+/// Application entry point.  Creates and shows the overlay window.
 @main
 struct CPU_MeterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    var body: some Scene { Settings { EmptyView() } }
+    var body: some Scene { Settings { EmptyView() } } // No Dock settings window
 }
 
+// MARK: - AppDelegate
+/// Handles macOS-level window creation and application lifecycle.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    var window: OverlayWindow?
+    private var window: OverlayWindow?
     func applicationDidFinishLaunching(_ note: Notification) {
         let host = NSHostingView(rootView: OverlayView())
         window = OverlayWindow(view: host)
-        window?.makeKeyAndOrderFront(nil)
+        // orderFrontRegardless avoids focus warnings in console
+        window?.orderFrontRegardless()
         NSApp.setActivationPolicy(.accessory)
     }
 }
