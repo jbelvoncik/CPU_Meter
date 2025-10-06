@@ -4,23 +4,11 @@ struct OverlayView: View {
     @StateObject private var cpu = CPUUsageSampler()
     @StateObject private var gpuane = GPUANESampler()
 
-    private func color(for percent: Double) -> Color {
-        switch percent {
-        case 0..<50: return .green
-        case 50..<80: return .yellow
-        default: return .red
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            let cpuValue = cpu.overall * 100
-            let gpuValue = gpuane.gpuPercent
-            let aneValue = gpuane.anePercent
-
-            metricRow(label: "CPU", value: cpuValue, color: color(for: cpuValue))
-            metricRow(label: "GPU", value: gpuValue, color: color(for: gpuValue))
-            metricRow(label: "ANE", value: aneValue, color: color(for: aneValue))
+            metricRow(label: "CPU", value: cpu.overall * 100, color: .green)
+            metricRow(label: "GPU", value: gpuane.gpuPercent, color: .yellow)
+            metricRow(label: "ANE", value: gpuane.anePercent, color: .red)
         }
         .font(.system(size: 18, weight: .bold, design: .rounded))
         .padding(16)
