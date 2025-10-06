@@ -48,3 +48,17 @@ Current GPU and ANE usage values are approximated by scanning `ioreg` output for
 
 The values are normalized heuristically to provide relative load indicators.
 Future updates may use `IOReportCopyChannelsInGroup` for true power sampling (no root access required).
+
+---
+
+### GPU / ANE Sampling Method
+
+CPU usage is sampled natively via `host_processor_info()`.
+
+GPU and ANE usage are estimated via a lightweight **IORegistry heuristic**,  
+which inspects live entries under `AppleARMPMUPowerSensor` (GPU power sensors)  
+and `H11ANE` (Apple Neural Engine).  
+This approach is **safe**, requires **no root privileges**, and works on all Apple Silicon  
+systems including macOS 26 (Tahoe). It provides approximate utilization metrics  
+based on active sensor count and update frequency.
+
