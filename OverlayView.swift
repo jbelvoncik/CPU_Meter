@@ -1,68 +1,38 @@
-//
-//  OverlayView.swift
-//  CPU_Meter
-//
-//  Minimal floating overlay with macOS glass (vibrancy) background
-//  and thin white border. Displays only CPU / GPU / ANE percentages.
-//
-//  © 2025 Jozef Belvončik MIT License
-//
-
 import SwiftUI
-
-// Wrapper for macOS visual effect blur
-struct VisualEffectBlur: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .hudWindow
-    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
-    var state: NSVisualEffectView.State = .active
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = material
-        v.blendingMode = blendingMode
-        v.state = state
-        return v
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-        nsView.state = state
-    }
-}
 
 struct OverlayView: View {
     @StateObject private var cpu = CPUUsageSampler()
     @StateObject private var gpuane = GPUANESampler()
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            metricRow(label: "CPU", value: cpu.overall * 100)
-            metricRow(label: "GPU", value: gpuane.gpuPercent)
-            metricRow(label: "ANE", value: gpuane.anePercent)
+    // Color scale: green → yellow → red
+    private func color(for value: Double) -> Color {
+        switch value {
+        case 0..<50: return .green
+        case 50..<80: return .yellow
+        default: return .red
         }
-        .font(.system(size: 20, weight: .bold, design: .rounded))
-        .foregroundColor(.white)
-        .padding(20)
-        .frame(minWidth: 160)
-        .background(
-            VisualEffectBlur(material: .hudWindow)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
-        )
     }
 
-    private func metricRow(label: String, value: Double) -> some View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            metricRow(label: "CPU", value: cpu.overall * 100, color: color(for: cpu.overall * 100))
+            metricRow(label: "GPU", value: gpuane.gpuPercent, color: color(for: gpuane.gpuPercent))
+            metricRow(label: "ANE", value: gpuane.anePercent, color: color(for: gpuane.anePercent))
+        }
+        .font(.system(size: 18, weight: .bold, design: .rounded))
+        .padding(16)
+        .frame(minWidth: 180)
+        .background(.black.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func metricRow(label: String, value: Double, color: Color) -> some View {
         HStack {
             Text(label)
             Spacer()
-            Text(value.isNaN || value.isZero ? "-- %" :
-                 String(format: "%.0f %%", value))
+            Text(value.isNaN ? "-- %" : String(format: "%.0f %%", value))
+                .foregroundColor(color)
         }
         .monospacedDigit()
-        .frame(width: 160)
     }
 }
