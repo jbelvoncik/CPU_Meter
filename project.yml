@@ -1,0 +1,21 @@
+name: CPU_Meter
+options:
+  bundleIdPrefix: com.jbelvoncik
+  deploymentTarget:
+    macOS: "13.0"
+targets:
+  CPU_Meter:
+    type: application
+    platform: macOS
+    sources:
+      - .
+    settings:
+      base:
+        PRODUCT_NAME: CPU_Meter
+        INFOPLIST_FILE: Info.plist
+        MACOSX_DEPLOYMENT_TARGET: 13.0
+        SWIFT_VERSION: 5.9
+        GENERATE_INFOPLIST_FILE: YES
+        SUPPORTS_MACCATALYST: NO
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
