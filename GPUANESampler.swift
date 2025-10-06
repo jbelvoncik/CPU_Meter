@@ -1,41 +1,55 @@
 import Foundation
 import Combine
 
+@MainActor
 final class GPUANESampler: ObservableObject {
     @Published var gpuPercent: Double = 0
     @Published var anePercent: Double = 0
+
     private var timer: Timer?
 
     init() {
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            self.update()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { await self.sample() }
         }
     }
 
-    private func update() {
-        // Run ioreg once and collect lines mentioning GPU/ANE power sensors
+    private func countSensors() -> (gpu: Int, ane: Int) {
         let task = Process()
         task.launchPath = "/usr/sbin/ioreg"
         task.arguments = ["-r", "-c", "AppleARMIODevice"]
+
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = nil
         try? task.run()
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return }
+        guard let output = String(data: data, encoding: .utf8) else { return (0, 0) }
 
-        // Simple heuristic: count ANE vs GPU lines to simulate load
-        let aneLines = output.components(separatedBy: "\n").filter { $0.contains("H11ANE") }.count
-        let gpuLines = output.components(separatedBy: "\n").filter { $0.contains("AppleARMPMUPowerSensor") }.count
+        let gpuCount = output.components(separatedBy: "AppleARMPMUPowerSensor").count
+        let aneCount = output.components(separatedBy: "H11ANE").count
+        return (gpuCount, aneCount)
+    }
 
-        // Normalize to rough 0–100%
-        let aneVal = min(Double(aneLines) / 30.0 * 100.0, 100)
-        let gpuVal = min(Double(gpuLines) / 300.0 * 100.0, 100)
+    private func deltaRatio(_ new: Int, _ old: Int, max: Double) -> Double {
+        let diff = abs(Double(new - old))
+        return min(diff / max * 100.0, 100.0)
+    }
 
-        DispatchQueue.main.async {
-            self.anePercent = aneVal
+    private var prevGPU = 0
+    private var prevANE = 0
+
+    private func sample() async {
+        let current = countSensors()
+        let gpuVal = deltaRatio(current.gpu, prevGPU, max: 50)
+        let aneVal = deltaRatio(current.ane, prevANE, max: 5)
+        prevGPU = current.gpu
+        prevANE = current.ane
+
+        await MainActor.run {
             self.gpuPercent = gpuVal
+            self.anePercent = aneVal
         }
     }
 }
