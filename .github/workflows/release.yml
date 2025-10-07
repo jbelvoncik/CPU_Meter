@@ -1,0 +1,36 @@
+name: Build & Verify Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build macOS app
+        run: |
+          xcodebuild -scheme CPU_Meter -configuration Release \
+            CODE_SIGN_IDENTITY="-" \
+            CONFIGURATION_BUILD_DIR=build/Release
+
+      - name: Package .app
+        run: |
+          cd build/Release
+          zip -r CPU_Meter_${{ github.ref_name }}_macOS.zip CPU_Meter.app
+
+      - name: Generate SHA256 checksum
+        run: shasum -a 256 build/Release/CPU_Meter_${{ github.ref_name }}_macOS.zip > checksum.txt
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/Release/CPU_Meter_${{ github.ref_name }}_macOS.zip
+            checksum.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
