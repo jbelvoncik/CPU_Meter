@@ -24,3 +24,10 @@ targets:
         CFBundleShortVersionString: "1.0"
         LSUIElement: 1
         NSHighResolutionCapable: true
+
+targets:
+  CPU_Meter:
+    settings:
+      base:
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: YES
