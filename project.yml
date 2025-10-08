@@ -1,7 +1,9 @@
 name: CPU_Meter
 options:
-  bundleIdPrefix: com.jbelvoncik
-  createIntermediateGroups: true
+  minimumXcodeGenVersion: 2.38.0
+  deploymentTarget:
+    macOS: "13.0"
+
 targets:
   CPU_Meter:
     type: application
@@ -10,10 +12,12 @@ targets:
       - Sources
       - Resources
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.jbelvoncik.cpu-meter
-      CODE_SIGN_STYLE: Manual
-      CODE_SIGN_IDENTITY: "-"
-      DEVELOPMENT_TEAM: ""
+      base:
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        PRODUCT_BUNDLE_IDENTIFIER: com.jbelvoncik.cpu-meter
     info:
       path: Info.plist
       properties:
@@ -24,10 +28,4 @@ targets:
         CFBundleShortVersionString: "1.0"
         LSUIElement: 1
         NSHighResolutionCapable: true
-
-targets:
-  CPU_Meter:
-    settings:
-      base:
-        ARCHS: arm64
-        ONLY_ACTIVE_ARCH: YES
+        CFBundleIconFile: AppIcon
