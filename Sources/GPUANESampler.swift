@@ -1,13 +1,17 @@
 import Foundation
 import Combine
 
-class GPUANESampler: ObservableObject {
+final class GPUANESampler: ObservableObject {
     @Published var gpuPercent: Double = 0
     @Published var anePercent: Double = 0
 
     private var timer: Timer?
 
     init() {
+        startSampling()
+    }
+
+    func startSampling() {
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             self.updateMetrics()
         }
@@ -15,41 +19,35 @@ class GPUANESampler: ObservableObject {
 
     private func updateMetrics() {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/powermetrics")
-        process.arguments = ["-n", "1", "--show-process-gpu"]
+        process.launchPath = "/usr/sbin/ioreg"
+        process.arguments = ["-r", "-n", "AGXAccelerator"]
 
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = nil
+        try? process.run()
+        process.waitUntilExit()
 
-        do {
-            try process.run()
-        } catch {
-            print("Failed to start powermetrics: \(error)")
-            return
-        }
+        guard let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(),
+                                  encoding: .utf8) else { return }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return }
-
-        // Parse GPU Power and frequency
-        if let line = output.split(separator: "\n").first(where: { $0.contains("GPU HW active residency") }) {
-            if let percent = line.components(separatedBy: .whitespaces)
-                .compactMap({ Double($0.replacingOccurrences(of: "%", with: "")) })
-                .first {
-                DispatchQueue.main.async {
-                    self.gpuPercent = percent
-                }
+        if let match = output.range(of: #"\"gpu_busy\" = ([0-9]+)"#, options: .regularExpression) {
+            let value = Double(output[match].split(separator: " ").last ?? "0") ?? 0
+            DispatchQueue.main.async {
+                self.gpuPercent = min(100.0, value)
+            }
+        } else if let match = output.range(of: #"\"GPU Busy\" = ([0-9]+)"#, options: .regularExpression) {
+            let value = Double(output[match].split(separator: " ").last ?? "0") ?? 0
+            DispatchQueue.main.async {
+                self.gpuPercent = min(100.0, value)
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.gpuPercent = 0
             }
         }
 
-        // Parse ANE Power (rough)
-        if let line = output.split(separator: "\n").first(where: { $0.contains("ANE Power:") }) {
-            if let mw = line.split(separator: " ").compactMap({ Double($0) }).first {
-                DispatchQueue.main.async {
-                    self.anePercent = mw / 1000.0
-                }
-            }
+        DispatchQueue.main.async {
+            self.anePercent = 0
         }
     }
 }
