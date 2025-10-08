@@ -1,21 +1,26 @@
 name: CPU_Meter
 options:
   bundleIdPrefix: com.jbelvoncik
-  deploymentTarget:
-    macOS: "13.0"
+  createIntermediateGroups: true
 targets:
   CPU_Meter:
     type: application
     platform: macOS
     sources:
-      - .   # include all Swift files automatically
+      - Sources
+      - Resources
     settings:
-      base:
-        PRODUCT_NAME: CPU_Meter
-        INFOPLIST_FILE: Info.plist
-        MACOSX_DEPLOYMENT_TARGET: 13.0
-        SWIFT_VERSION: 5.9
-        GENERATE_INFOPLIST_FILE: YES
-        SUPPORTS_MACCATALYST: NO
-        CODE_SIGN_IDENTITY: "-"
-        DEVELOPMENT_TEAM: ""
+      PRODUCT_BUNDLE_IDENTIFIER: com.jbelvoncik.cpu-meter
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: "-"
+      DEVELOPMENT_TEAM: ""
+    info:
+      path: Info.plist
+      properties:
+        CFBundleName: CPU_Meter
+        CFBundleExecutable: CPU_Meter
+        CFBundleIdentifier: com.jbelvoncik.cpu-meter
+        CFBundleVersion: "1.0"
+        CFBundleShortVersionString: "1.0"
+        LSUIElement: 1
+        NSHighResolutionCapable: true
