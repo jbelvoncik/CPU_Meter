@@ -1,53 +1,56 @@
 import Foundation
-import Combine
+import IOKit
 
 final class GPUANESampler: ObservableObject {
+    static let shared = GPUANESampler()
     @Published var gpuPercent: Double = 0
     @Published var anePercent: Double = 0
 
     private var timer: Timer?
 
-    init() {
-        startSampling()
-    }
-
-    func startSampling() {
+    func start() {
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            self.updateMetrics()
+            self.update()
         }
+        RunLoop.main.add(timer!, forMode: .common)
     }
 
-    private func updateMetrics() {
-        let process = Process()
-        process.launchPath = "/usr/sbin/ioreg"
-        process.arguments = ["-r", "-n", "AGXAccelerator"]
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        try? process.run()
-        process.waitUntilExit()
+    private func update() {
+        var iterator: io_iterator_t = 0
+        var totalBusy: Double = 0
+        var count: Double = 0
 
-        guard let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(),
-                                  encoding: .utf8) else { return }
-
-        if let match = output.range(of: #"\"gpu_busy\" = ([0-9]+)"#, options: .regularExpression) {
-            let value = Double(output[match].split(separator: " ").last ?? "0") ?? 0
-            DispatchQueue.main.async {
-                self.gpuPercent = min(100.0, value)
+        if IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iterator) == KERN_SUCCESS {
+            var service = IOIteratorNext(iterator)
+            while service != 0 {
+                if let props = getProperties(service),
+                   let perf = props["PerformanceStatistics"] as? [String: Any],
+                   let busy = perf["GPU Busy"] as? Double {
+                    totalBusy += busy
+                    count += 1
+                }
+                IOObjectRelease(service)
+                service = IOIteratorNext(iterator)
             }
-        } else if let match = output.range(of: #"\"GPU Busy\" = ([0-9]+)"#, options: .regularExpression) {
-            let value = Double(output[match].split(separator: " ").last ?? "0") ?? 0
-            DispatchQueue.main.async {
-                self.gpuPercent = min(100.0, value)
-            }
-        } else {
-            DispatchQueue.main.async {
-                self.gpuPercent = 0
-            }
+            IOObjectRelease(iterator)
         }
 
         DispatchQueue.main.async {
-            self.anePercent = 0
+            self.gpuPercent = count > 0 ? min(100.0, totalBusy / count) : 0
+            self.anePercent = 0 // placeholder until public ANE telemetry exists
         }
+    }
+
+    private func getProperties(_ service: io_service_t) -> [String: Any]? {
+        var props: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+              let dict = props?.takeRetainedValue() as? [String: Any] else { return nil }
+        return dict
     }
 }
